@@ -1,0 +1,5 @@
+# Local OS files
+.DS_Store
+
+# Large local datasets
+data/

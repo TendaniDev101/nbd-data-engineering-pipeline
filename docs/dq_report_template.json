@@ -1,0 +1,129 @@
+{
+  "$schema": "nedbank-de-challenge/dq-report/v1",
+  "_comment": "Template and schema documentation for /data/output/dq_report.json — required from Stage 2 onward. Replace all placeholder values with actual values computed by your pipeline. Do not write this file at Stage 1.",
+
+  "_schema_notes": {
+    "run_timestamp": "ISO 8601 UTC timestamp. Format: YYYY-MM-DDTHH:MM:SSZ. Set this when your pipeline begins execution, not when it finishes.",
+    "stage": "String. One of: '1', '2', '3'. Must match the stage this pipeline run corresponds to.",
+    "source_record_counts": "Counts of raw records read from each source file before any filtering or transformation. Used by the scoring system to verify your percentage calculations.",
+    "dq_issues": "Array. One entry per DQ issue type that was present in the data. Omit issue types that were not encountered — do not write a zero-count entry.",
+    "gold_layer_record_counts": "Counts of records written to each Gold layer table after all DQ handling is applied.",
+    "execution_duration_seconds": "Integer. Wall-clock seconds from pipeline start to pipeline end."
+  },
+
+  "_field_constraints": {
+    "issue_type": "String. Must match the key used in your dq_rules.yaml configuration. The scoring system cross-references this field against your config.",
+    "records_affected": "Integer. Number of source records that exhibited this issue type.",
+    "percentage_of_total": "Float, 2 decimal places. Percentage of total source records for the affected file. For transaction issues, the denominator is source_record_counts.transactions_raw. For account issues, use accounts_raw.",
+    "handling_action": "String. Must be consistent with the handling rule in dq_rules.yaml. Use the values defined in that config — do not invent new values. The scoring system verifies consistency between this field and your config.",
+    "records_in_output": "Integer. Records from this issue cohort that appear in downstream output (Silver/Gold). For QUARANTINED and EXCLUDED handling actions, this will be 0 or lower than records_affected. For NORMALISED handling actions, this equals records_affected."
+  },
+
+  "_handling_action_reference": {
+    "DEDUPLICATED_KEEP_FIRST": "Duplicate records identified; one copy retained (earliest timestamp), remainder excluded from Silver/Gold",
+    "QUARANTINED": "Records routed to Bronze quarantine table; excluded from Silver and Gold layers entirely",
+    "CAST_TO_DECIMAL": "Amount field delivered as STRING; successfully cast to DECIMAL(18,2) and retained in output",
+    "EXCLUDED_CAST_FAILED": "Amount field delivered as STRING; cast to DECIMAL failed; record excluded from Silver/Gold",
+    "NORMALISED_DATE": "Date field delivered in non-ISO format; normalised to YYYY-MM-DD and retained",
+    "NORMALISED_CURRENCY": "Currency field delivered as variant (R, rands, 710); standardised to ZAR and retained",
+    "EXCLUDED_NULL_PK": "Record had a null primary key (account_id); excluded from Silver/Gold and flagged"
+  },
+
+  "_example": {
+    "_note": "The following is a complete example of a valid dq_report.json for a Stage 2 pipeline run. Values are illustrative — your pipeline will compute its own counts from the evaluation dataset.",
+    "example_report": {
+      "$schema": "nedbank-de-challenge/dq-report/v1",
+      "run_timestamp": "2026-03-20T14:32:00Z",
+      "stage": "2",
+      "source_record_counts": {
+        "accounts_raw": 300000,
+        "transactions_raw": 3000000,
+        "customers_raw": 240000
+      },
+      "dq_issues": [
+        {
+          "issue_type": "duplicate_transactions",
+          "records_affected": 150000,
+          "percentage_of_total": 5.00,
+          "handling_action": "DEDUPLICATED_KEEP_FIRST",
+          "records_in_output": 2850000
+        },
+        {
+          "issue_type": "orphaned_transactions",
+          "records_affected": 57000,
+          "percentage_of_total": 1.90,
+          "handling_action": "QUARANTINED",
+          "records_in_output": 0
+        },
+        {
+          "issue_type": "amount_type_mismatch",
+          "records_affected": 85500,
+          "percentage_of_total": 2.85,
+          "handling_action": "CAST_TO_DECIMAL",
+          "records_in_output": 85500
+        },
+        {
+          "issue_type": "date_format_inconsistency",
+          "records_affected": 114000,
+          "percentage_of_total": 3.80,
+          "handling_action": "NORMALISED_DATE",
+          "records_in_output": 114000
+        },
+        {
+          "issue_type": "currency_variants",
+          "records_affected": 28500,
+          "percentage_of_total": 0.95,
+          "handling_action": "NORMALISED_CURRENCY",
+          "records_in_output": 28500
+        },
+        {
+          "issue_type": "null_account_id",
+          "records_affected": 1500,
+          "percentage_of_total": 0.50,
+          "handling_action": "EXCLUDED_NULL_PK",
+          "records_in_output": 0
+        }
+      ],
+      "gold_layer_record_counts": {
+        "fact_transactions": 2792500,
+        "dim_accounts": 298500,
+        "dim_customers": 240000
+      },
+      "execution_duration_seconds": 847
+    }
+  },
+
+  "_production_template": {
+    "_note": "Copy this block and populate it with your pipeline's computed values. Write the result to /data/output/dq_report.json.",
+    "$schema": "nedbank-de-challenge/dq-report/v1",
+    "run_timestamp": "<ISO 8601 UTC timestamp — e.g. 2026-03-20T14:32:00Z>",
+    "stage": "<'2' or '3'>",
+    "source_record_counts": {
+      "accounts_raw": "<integer>",
+      "transactions_raw": "<integer>",
+      "customers_raw": "<integer>"
+    },
+    "dq_issues": [
+      {
+        "issue_type": "<string — must match dq_rules.yaml key>",
+        "records_affected": "<integer>",
+        "percentage_of_total": "<float, 2 decimal places>",
+        "handling_action": "<string — must match dq_rules.yaml handling value>",
+        "records_in_output": "<integer>"
+      }
+    ],
+    "gold_layer_record_counts": {
+      "fact_transactions": "<integer>",
+      "dim_accounts": "<integer>",
+      "dim_customers": "<integer>"
+    },
+    "execution_duration_seconds": "<integer>"
+  },
+
+  "_scoring_notes": {
+    "correctness_check": "The scoring system compares your dq_issues counts against internally-computed expected values with a ±5% tolerance per category. Your records_affected values must be within 5% of the correct answer to receive full points.",
+    "consistency_check": "handling_action values are cross-referenced against your dq_rules.yaml. Inconsistencies (e.g., config says QUARANTINED but report says NORMALISED) are flagged as a correctness failure.",
+    "row_reconciliation": "The scorer verifies: source_record_counts - excluded records ≈ gold_layer_record_counts (with tolerance for deduplication semantics). Silent data loss — records missing from output with no corresponding dq_issues entry — results in a deduction.",
+    "file_location": "The file must be present at /data/output/dq_report.json. No other path is checked."
+  }
+}

@@ -1,0 +1,54 @@
+# ============================================================
+# Pipeline Configuration
+#
+# All paths are absolute paths inside the Docker container.
+# Do NOT change the /data/input/ or /data/output/ prefixes —
+# these are fixed mount points enforced by the scoring system.
+#
+# The scoring system may inject this file at /data/config/pipeline_config.yaml
+# at runtime. Your pipeline should read from that path at startup, not from
+# a copy baked into your image.
+#
+# Recommended loading pattern (Python):
+#   import yaml, os
+#   config_path = os.environ.get("PIPELINE_CONFIG", "/data/config/pipeline_config.yaml")
+#   with open(config_path) as f:
+#       config = yaml.safe_load(f)
+# ============================================================
+
+# ── Input paths (read-only; do not write here) ────────────────
+input:
+  accounts_path: /data/input/accounts.csv
+  transactions_path: /data/input/transactions.jsonl
+  customers_path: /data/input/customers.csv
+
+# ── Output paths (your pipeline creates these at runtime) ────
+output:
+  bronze_path: /data/output/bronze
+  silver_path: /data/output/silver
+  gold_path: /data/output/gold
+  dq_report_path: /data/output/dq_report.json   # Stage 2+ only
+
+# ── Stage 3 streaming paths ───────────────────────────────────
+# Uncomment and use at Stage 3 only.
+# streaming:
+#   stream_input_path: /data/stream
+#   stream_gold_path: /data/output/stream_gold
+#   poll_interval_seconds: 10
+#   quiesce_timeout_seconds: 60
+
+# ── Spark settings ────────────────────────────────────────────
+# Keep master as local[2] to match the 2-vCPU scoring constraint.
+# Do not set to local[*] — it will try to use all available CPUs.
+spark:
+  master: local[2]
+  app_name: nedbank-de-pipeline
+  # Spark writes temporary files to /tmp. The scoring system provides
+  # a 512 MB tmpfs at /tmp — keep intermediate data small.
+  # spark.local.dir: /tmp
+
+# ── DQ rules reference ────────────────────────────────────────
+# Stage 2+: path to the DQ rules file. Your pipeline must read
+# DQ logic from this file rather than hardcoding it.
+# dq:
+#   rules_path: /data/config/dq_rules.yaml

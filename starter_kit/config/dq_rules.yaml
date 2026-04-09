@@ -1,0 +1,76 @@
+# ============================================================
+# Data Quality Rules
+#
+# This file is REQUIRED from Stage 2 onward.
+# The scoring system checks that your pipeline reads DQ logic
+# from this file rather than hardcoding it in Python.
+#
+# Populate this file with the rules your transform.py applies
+# to flag records in the transactions Silver/Gold tables.
+#
+# Structure is flexible — design it to suit your implementation.
+# The example skeleton below shows one common pattern.
+# ============================================================
+
+# ── Null checks ───────────────────────────────────────────────
+# Fields that must not be null. Records violating these rules
+# should receive dq_flag = "NULL_REQUIRED".
+#
+# null_checks:
+#   fact_transactions:
+#     - transaction_id
+#     - account_id
+#     - transaction_date
+#     - amount
+#     - transaction_type
+#     - currency
+#     - channel
+
+# ── Type checks ───────────────────────────────────────────────
+# Fields with expected types. Records where values cannot be
+# cast should receive dq_flag = "TYPE_MISMATCH".
+#
+# type_checks:
+#   fact_transactions:
+#     amount: decimal
+#     transaction_date: date
+#     transaction_timestamp: timestamp
+
+# ── Value domain checks ───────────────────────────────────────
+# Fields constrained to a fixed set of values.
+#
+# domain_checks:
+#   transaction_type:
+#     allowed: [DEBIT, CREDIT, FEE, REVERSAL]
+#     dq_flag: TYPE_MISMATCH
+#   channel:
+#     allowed: [POS, APP, ATM, EFT, USSD, INTERNAL]
+#     dq_flag: TYPE_MISMATCH
+
+# ── Currency normalisation ────────────────────────────────────
+# Source data may contain currency variants. All values must be
+# standardised to "ZAR" in the Gold output. Records with
+# non-standard source values should receive dq_flag = "CURRENCY_VARIANT".
+#
+# currency_normalisation:
+#   target_value: ZAR
+#   flag_variants: true
+
+# ── Date format checks ────────────────────────────────────────
+# Date fields must conform to ISO format (YYYY-MM-DD).
+# Records with unrecognised date formats should receive
+# dq_flag = "DATE_FORMAT".
+#
+# date_format_checks:
+#   - transaction_date
+#   - last_activity_date
+
+# ── Referential integrity checks ─────────────────────────────
+# Transactions referencing an account_id not present in
+# dim_accounts should receive dq_flag = "ORPHANED_ACCOUNT".
+#
+# referential_integrity:
+#   fact_transactions:
+#     - field: account_id
+#       references: dim_accounts.account_id
+#       dq_flag: ORPHANED_ACCOUNT

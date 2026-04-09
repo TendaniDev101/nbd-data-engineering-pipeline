@@ -1,0 +1,14 @@
+# Add Python packages you need beyond the base image here.
+# The base image already includes:
+#   pyspark==3.5.0
+#   delta-spark==3.1.0
+#   pandas==2.1.0
+#   pyarrow==14.0.0
+#   pyyaml==6.0.1
+#   duckdb==0.10.0
+#
+# Do NOT re-pin these packages here — version conflicts will break your build.
+# Only add packages that are genuinely not in the base image.
+#
+# Example:
+#   great-expectations==0.18.0

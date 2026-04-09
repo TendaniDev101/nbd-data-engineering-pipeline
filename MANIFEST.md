@@ -1,0 +1,39 @@
+# Stage 1 Pack -- File Manifest
+
+| Path | Size |
+|---|---|
+| `README_FIRST.md` | 4.8K |
+| `data/accounts.csv` | 14M |
+| `data/customers.csv` | 9.7M |
+| `data/transactions.jsonl` | 448M |
+| `docs/adr_template.md` | 6.0K |
+| `docs/challenge_brief.md` | 11K |
+| `docs/challenge_rules.md` | 21K |
+| `docs/data_dictionary.md` | 17K |
+| `docs/docker_interface_contract.md` | 6.0K |
+| `docs/dq_report_template.json` | 6.9K |
+| `docs/output_schema_spec.md` | 12K |
+| `docs/README_DOCKER.md` | 6.2K |
+| `docs/resource_constraints.md` | 8.4K |
+| `docs/stage2_spec_addendum.md` | 7.7K |
+| `docs/stage3_spec_addendum.md` | 7.0K |
+| `docs/stream_interface_spec.md` | 6.2K |
+| `docs/submission_guide.md` | 8.9K |
+| `docs/validation_queries.sql` | 9.0K |
+| `infrastructure/Dockerfile.base` | 4.0K |
+| `infrastructure/run_tests.sh` | 21K |
+| `starter_kit/.gitignore` | 473B |
+| `starter_kit/Dockerfile` | 702B |
+| `starter_kit/README.md` | 4.9K |
+| `starter_kit/requirements.txt` | 400B |
+| `starter_kit/adr/stage3_adr.md` | 6.0K |
+| `starter_kit/config/dq_rules.yaml` | 2.9K |
+| `starter_kit/config/pipeline_config.yaml` | 2.3K |
+| `starter_kit/pipeline/__init__.py` | 0B |
+| `starter_kit/pipeline/ingest.py` | 1.5K |
+| `starter_kit/pipeline/provision.py` | 2.1K |
+| `starter_kit/pipeline/run_all.py` | 791B |
+| `starter_kit/pipeline/stream_ingest.py` | 2.2K |
+| `starter_kit/pipeline/transform.py` | 1.6K |
+| `starter_kit/stream/.gitkeep` | 0B |
+| `starter_kit/stream/README.md` | 625B |

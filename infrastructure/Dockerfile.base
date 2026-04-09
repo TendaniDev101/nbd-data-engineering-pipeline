@@ -1,0 +1,75 @@
+# nedbank-de-challenge/base:1.0
+# Base image for the Nedbank Data & Analytics Challenge — Data Engineering Track
+#
+# Participants extend this image in their own Dockerfile:
+#   FROM nedbank-de-challenge/base:1.0
+#
+# Build:  docker build -t nedbank-de-challenge/base:1.0 -f Dockerfile.base .
+# Verify: docker run --rm nedbank-de-challenge/base:1.0 python -c "import pyspark; import delta; print('OK')"
+
+FROM python:3.11-slim-bookworm
+
+# ── System dependencies ──────────────────────────────────────────────────────
+# default-jdk-headless is sufficient for PySpark local mode and keeps the image
+# well under the 3 GB limit. Do not install the full JDK.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    default-jdk-headless \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# ── Java environment ─────────────────────────────────────────────────────────
+ENV JAVA_HOME=/usr/lib/jvm/default-java
+ENV PATH="${JAVA_HOME}/bin:${PATH}"
+
+# ── Python data engineering dependencies — pinned versions ───────────────────
+# Versions are pinned for reproducibility. Do not upgrade delta-spark or
+# pyarrow independently — they have known breaking-change interactions.
+#   delta-spark==3.1.0  is compatible with  pyspark==3.5.0
+#   pyarrow==14.0.0     must not be upgraded (breaks delta-spark==3.1.0)
+RUN pip install --no-cache-dir \
+    pyspark==3.5.0 \
+    delta-spark==3.1.0 \
+    pandas==2.1.0 \
+    pyarrow==14.0.0 \
+    pyyaml==6.0.1 \
+    duckdb==0.10.0
+
+# ── Spark / PySpark environment ───────────────────────────────────────────────
+ENV SPARK_HOME=/usr/local/lib/python3.11/dist-packages/pyspark
+ENV PYSPARK_PYTHON=python3
+
+# ── Working directory ─────────────────────────────────────────────────────────
+WORKDIR /app
+
+# ── Mount points ──────────────────────────────────────────────────────────────
+# Created here so they exist even when volumes are not mounted.
+# Intended access pattern:
+#   /data/input        — read-only  (challenge datasets injected by scoring system)
+#   /data/config       — read-only  (participant pipeline_config.yaml and dq_rules.yaml)
+#   /data/stream       — read-only  (Stage 3 streaming batch files)
+#   /data/output       — read-write (participant writes all pipeline outputs here)
+RUN mkdir -p \
+    /data/input \
+    /data/output/bronze \
+    /data/output/silver \
+    /data/output/gold \
+    /data/output/stream_gold \
+    /data/config \
+    /data/stream \
+    && chmod -R 777 /data/output \
+    && chmod -R 555 /data/input /data/config /data/stream
+
+# ── Image metadata ────────────────────────────────────────────────────────────
+LABEL maintainer="otinga@otinga.io"
+LABEL version="1.0"
+LABEL challenge="nedbank-data-analytics-hackathon"
+LABEL track="data-engineering"
+LABEL description="Nedbank DE Challenge base image — Python 3.11, PySpark 3.5.0, Delta Lake 3.1.0"
+LABEL base_image="python:3.11-slim-bookworm"
+LABEL java="OpenJDK 17 (default-jdk-headless)"
+
+# ── No ENTRYPOINT — participants define their own ─────────────────────────────
+# The scoring system invokes:  docker run [security flags] <image> python pipeline/run_all.py
+# Participants must NOT hardcode a CMD that conflicts with the scoring invocation.
+# If you need a default for local testing only, override CMD in your own Dockerfile.
+CMD ["python", "pipeline/run_all.py"]
