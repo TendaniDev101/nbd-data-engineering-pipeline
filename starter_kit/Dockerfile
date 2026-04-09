@@ -1,5 +1,8 @@
 FROM nedbank-de-challenge/base:1.0
 
+# Ensure pyspark launcher resolves correctly even if base image path conventions vary.
+ENV SPARK_HOME=/usr/local/lib/python3.11/site-packages/pyspark
+
 # Install any additional Python dependencies you need beyond the base image.
 # Leave requirements.txt empty if the base packages are sufficient.
 WORKDIR /app

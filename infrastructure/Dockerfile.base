@@ -35,7 +35,7 @@ RUN pip install --no-cache-dir \
     duckdb==0.10.0
 
 # ── Spark / PySpark environment ───────────────────────────────────────────────
-ENV SPARK_HOME=/usr/local/lib/python3.11/dist-packages/pyspark
+ENV SPARK_HOME=/usr/local/lib/python3.11/site-packages/pyspark
 ENV PYSPARK_PYTHON=python3
 
 # ── Working directory ─────────────────────────────────────────────────────────

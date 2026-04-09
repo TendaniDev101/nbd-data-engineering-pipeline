@@ -25,14 +25,86 @@ Spark configuration tip:
   Configure Delta Lake using the builder pattern shown in the base image docs.
 """
 
+import os
+from datetime import datetime
+
+import yaml
+from delta import configure_spark_with_delta_pip
+from pyspark.sql import SparkSession
+from pyspark.sql import functions as F
+
+
+DEFAULT_CONFIG_PATH = "/data/config/pipeline_config.yaml"
+
+
+def _resolve_config_path() -> str:
+    explicit_path = os.environ.get("PIPELINE_CONFIG")
+    if explicit_path:
+        return explicit_path
+
+    candidates = [
+        DEFAULT_CONFIG_PATH,
+        os.path.join(os.getcwd(), "config", "pipeline_config.yaml"),
+        os.path.join(os.path.dirname(__file__), "..", "config", "pipeline_config.yaml"),
+    ]
+
+    for path in candidates:
+        normalized = os.path.abspath(path)
+        if os.path.exists(normalized):
+            return normalized
+
+    return DEFAULT_CONFIG_PATH
+
+
+def _load_config() -> dict:
+    config_path = _resolve_config_path()
+    with open(config_path, "r", encoding="utf-8") as config_file:
+        return yaml.safe_load(config_file)
+
+
+def _build_spark_session(spark_config: dict) -> SparkSession:
+    builder = (
+        SparkSession.builder.master(spark_config.get("master", "local[2]"))
+        .appName(spark_config.get("app_name", "nedbank-de-pipeline"))
+        .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
+        .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")
+    )
+
+    for key, value in spark_config.items():
+        if key in {"master", "app_name"}:
+            continue
+        builder = builder.config(key, str(value))
+
+    return configure_spark_with_delta_pip(builder).getOrCreate()
+
+
+def _write_bronze_table(df, output_path: str, ingestion_time: datetime) -> None:
+    (
+        df.withColumn("ingestion_timestamp", F.lit(ingestion_time).cast("timestamp"))
+        .write.format("delta")
+        .mode("overwrite")
+        .save(output_path)
+    )
+
 
 def run_ingestion():
-    # TODO: Implement Bronze layer ingestion.
-    #
-    # Suggested steps:
-    #   1. Load pipeline_config.yaml to get input/output paths.
-    #   2. Initialise a SparkSession with Delta Lake support (local[2]).
-    #   3. Read accounts.csv → append ingestion_timestamp → write to bronze/accounts/.
-    #   4. Read transactions.jsonl → append ingestion_timestamp → write to bronze/transactions/.
-    #   5. Read customers.csv → append ingestion_timestamp → write to bronze/customers/.
-    pass
+    config = _load_config()
+    input_cfg = config["input"]
+    output_cfg = config["output"]
+    spark_cfg = config.get("spark", {})
+
+    bronze_root = output_cfg["bronze_path"]
+    ingestion_time = datetime.utcnow()
+
+    spark = _build_spark_session(spark_cfg)
+
+    try:
+        accounts_df = spark.read.option("header", "true").csv(input_cfg["accounts_path"])
+        transactions_df = spark.read.json(input_cfg["transactions_path"])
+        customers_df = spark.read.option("header", "true").csv(input_cfg["customers_path"])
+
+        _write_bronze_table(accounts_df, os.path.join(bronze_root, "accounts"), ingestion_time)
+        _write_bronze_table(transactions_df, os.path.join(bronze_root, "transactions"), ingestion_time)
+        _write_bronze_table(customers_df, os.path.join(bronze_root, "customers"), ingestion_time)
+    finally:
+        spark.stop()
