@@ -29,7 +29,6 @@ import os
 from datetime import datetime
 
 import yaml
-from delta import configure_spark_with_delta_pip
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 
@@ -63,19 +62,35 @@ def _load_config() -> dict:
 
 
 def _build_spark_session(spark_config: dict) -> SparkSession:
+    os.environ.setdefault("SPARK_LOCAL_HOSTNAME", "localhost")
+    os.environ.setdefault("SPARK_LOCAL_IP", "127.0.0.1")
+
+    configured_jars = spark_config.get("spark.jars")
+    delta_jars = os.environ.get("DELTA_JARS")
+    merged_jars = ",".join([j for j in [configured_jars, delta_jars] if j])
+
     builder = (
         SparkSession.builder.master(spark_config.get("master", "local[2]"))
         .appName(spark_config.get("app_name", "nedbank-de-pipeline"))
         .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
         .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")
+        .config("spark.driver.host", spark_config.get("driver_host", "127.0.0.1"))
+        .config("spark.driver.bindAddress", spark_config.get("driver_bind_address", "127.0.0.1"))
+        .config("spark.local.hostname", spark_config.get("local_hostname", "localhost"))
+        .config(
+            "spark.sql.parquet.compression.codec",
+            spark_config.get("spark.sql.parquet.compression.codec", "uncompressed"),
+        )
     )
+    if merged_jars:
+        builder = builder.config("spark.jars", merged_jars)
 
     for key, value in spark_config.items():
-        if key in {"master", "app_name"}:
+        if key in {"master", "app_name", "spark.jars"}:
             continue
         builder = builder.config(key, str(value))
 
-    return configure_spark_with_delta_pip(builder).getOrCreate()
+    return builder.getOrCreate()
 
 
 def _write_bronze_table(df, output_path: str, ingestion_time: datetime) -> None:

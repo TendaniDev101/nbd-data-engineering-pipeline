@@ -48,7 +48,7 @@ spark:
   # spark.local.dir: /tmp
 
 # ── DQ rules reference ────────────────────────────────────────
-# Stage 2+: path to the DQ rules file. Your pipeline must read
-# DQ logic from this file rather than hardcoding it.
-# dq:
-#   rules_path: /data/config/dq_rules.yaml
+# Stage 2+: path to the DQ rules file. Your pipeline reads
+# DQ logic from this file to avoid hardcoded rule behaviour.
+dq:
+  rules_path: /data/config/dq_rules.yaml

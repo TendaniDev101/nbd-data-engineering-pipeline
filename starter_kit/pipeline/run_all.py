@@ -13,12 +13,24 @@ Do not add interactive prompts, argument parsing that blocks execution,
 or any code that reads from stdin. The container has no TTY attached.
 """
 
+import os
+import time
+from datetime import datetime, timezone
+
 from pipeline.ingest import run_ingestion
 from pipeline.transform import run_transformation
 from pipeline.provision import run_provisioning
 
 
 if __name__ == "__main__":
+    if "PIPELINE_RUN_START_EPOCH" not in os.environ:
+        start_epoch = time.time()
+        os.environ["PIPELINE_RUN_START_EPOCH"] = str(start_epoch)
+        os.environ["PIPELINE_RUN_TIMESTAMP_UTC"] = datetime.fromtimestamp(
+            start_epoch,
+            tz=timezone.utc,
+        ).strftime("%Y-%m-%dT%H:%M:%SZ")
+
     run_ingestion()
     run_transformation()
     run_provisioning()

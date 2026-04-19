@@ -1,76 +1,84 @@
-# ============================================================
-# Data Quality Rules
-#
-# This file is REQUIRED from Stage 2 onward.
-# The scoring system checks that your pipeline reads DQ logic
-# from this file rather than hardcoding it in Python.
-#
-# Populate this file with the rules your transform.py applies
-# to flag records in the transactions Silver/Gold tables.
-#
-# Structure is flexible — design it to suit your implementation.
-# The example skeleton below shows one common pattern.
-# ============================================================
+dq_flag_priority:
+  - NULL_REQUIRED
+  - TYPE_MISMATCH
+  - DATE_FORMAT
+  - CURRENCY_VARIANT
+  - ORPHANED_ACCOUNT
+  - DUPLICATE_DEDUPED
 
-# ── Null checks ───────────────────────────────────────────────
-# Fields that must not be null. Records violating these rules
-# should receive dq_flag = "NULL_REQUIRED".
-#
-# null_checks:
-#   fact_transactions:
-#     - transaction_id
-#     - account_id
-#     - transaction_date
-#     - amount
-#     - transaction_type
-#     - currency
-#     - channel
+rules:
+  NULL_REQUIRED:
+    enabled: true
+    issue_type: null_required
+    handling_action: EXCLUDED_NULL_PK
+    denominator: transactions_raw
+    fields:
+      - transaction_id
+      - account_id
+      - transaction_date_raw
+      - transaction_time
+      - transaction_type
+      - amount_raw
+      - currency_raw
+      - channel
 
-# ── Type checks ───────────────────────────────────────────────
-# Fields with expected types. Records where values cannot be
-# cast should receive dq_flag = "TYPE_MISMATCH".
-#
-# type_checks:
-#   fact_transactions:
-#     amount: decimal
-#     transaction_date: date
-#     transaction_timestamp: timestamp
+  TYPE_MISMATCH:
+    enabled: true
+    issue_type: type_mismatch
+    handling_action: CAST_TO_DECIMAL
+    denominator: transactions_raw
+    amount_raw_field: amount_raw
+    amount_cast_field: amount
+    timestamp_field: transaction_timestamp
+    timestamp_source_fields:
+      - transaction_date
+      - transaction_time
+    allowed_transaction_types:
+      - DEBIT
+      - CREDIT
+      - FEE
+      - REVERSAL
+    allowed_channels:
+      - POS
+      - APP
+      - ATM
+      - EFT
+      - USSD
+      - INTERNAL
 
-# ── Value domain checks ───────────────────────────────────────
-# Fields constrained to a fixed set of values.
-#
-# domain_checks:
-#   transaction_type:
-#     allowed: [DEBIT, CREDIT, FEE, REVERSAL]
-#     dq_flag: TYPE_MISMATCH
-#   channel:
-#     allowed: [POS, APP, ATM, EFT, USSD, INTERNAL]
-#     dq_flag: TYPE_MISMATCH
+  DATE_FORMAT:
+    enabled: true
+    issue_type: date_format_inconsistency
+    handling_action: NORMALISED_DATE
+    denominator: transactions_raw
+    source_field: transaction_date_raw
+    parsed_field: transaction_date
 
-# ── Currency normalisation ────────────────────────────────────
-# Source data may contain currency variants. All values must be
-# standardised to "ZAR" in the Gold output. Records with
-# non-standard source values should receive dq_flag = "CURRENCY_VARIANT".
-#
-# currency_normalisation:
-#   target_value: ZAR
-#   flag_variants: true
+  CURRENCY_VARIANT:
+    enabled: true
+    issue_type: currency_variants
+    handling_action: NORMALISED_CURRENCY
+    denominator: transactions_raw
+    source_field: currency_raw
+    target_value: ZAR
 
-# ── Date format checks ────────────────────────────────────────
-# Date fields must conform to ISO format (YYYY-MM-DD).
-# Records with unrecognised date formats should receive
-# dq_flag = "DATE_FORMAT".
-#
-# date_format_checks:
-#   - transaction_date
-#   - last_activity_date
+  ORPHANED_ACCOUNT:
+    enabled: true
+    issue_type: orphaned_transactions
+    handling_action: QUARANTINED
+    denominator: transactions_raw
+    reference_present_field: _valid_account_id
 
-# ── Referential integrity checks ─────────────────────────────
-# Transactions referencing an account_id not present in
-# dim_accounts should receive dq_flag = "ORPHANED_ACCOUNT".
-#
-# referential_integrity:
-#   fact_transactions:
-#     - field: account_id
-#       references: dim_accounts.account_id
-#       dq_flag: ORPHANED_ACCOUNT
+  DUPLICATE_DEDUPED:
+    enabled: true
+    issue_type: duplicate_transactions
+    handling_action: DEDUPLICATED_KEEP_FIRST
+    denominator: transactions_raw
+    duplicate_count_field: _dup_count
+
+account_null_required:
+  issue_code: NULL_REQUIRED_ACCOUNT
+  issue_type: null_account_id
+  handling_action: EXCLUDED_NULL_PK
+  denominator: accounts_raw
+  key_field: account_id
