@@ -36,7 +36,6 @@ from datetime import datetime, timezone
 import yaml
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
-from pyspark.sql.window import Window
 
 
 DEFAULT_CONFIG_PATH = "/data/config/pipeline_config.yaml"
@@ -142,6 +141,12 @@ def _missing_string(column_name: str):
     return F.col(column_name).isNull() | (F.length(F.trim(F.col(column_name).cast("string"))) == 0)
 
 
+def _stable_bigint_sk(column_name: str):
+    return F.expr(
+        f"cast(conv(substr(sha2(coalesce(cast({column_name} as string), ''), 256), 1, 15), 16, 10) as bigint)"
+    )
+
+
 def _collect_flag_counts(df) -> dict:
     rows = (
         df.filter(F.col("dq_flag").isNotNull())
@@ -201,10 +206,9 @@ def run_provisioning():
             .alias("age_band"),
         )
 
-        customer_sk_window = Window.orderBy(F.col("customer_id").asc_nulls_last())
         dim_customers = dim_customers_base.withColumn(
             "customer_sk",
-            F.row_number().over(customer_sk_window).cast("bigint"),
+            _stable_bigint_sk("customer_id"),
         ).select(
             "customer_sk",
             "customer_id",
@@ -235,10 +239,9 @@ def run_provisioning():
             )
         )
 
-        account_sk_window = Window.orderBy(F.col("account_id").asc_nulls_last())
         dim_accounts = dim_accounts_base.withColumn(
             "account_sk",
-            F.row_number().over(account_sk_window).cast("bigint"),
+            _stable_bigint_sk("account_id"),
         ).select(
             "account_sk",
             "account_id",
@@ -286,10 +289,9 @@ def run_provisioning():
             )
         )
 
-        tx_sk_window = Window.orderBy(F.col("transaction_id").asc_nulls_last())
         fact_transactions = fact_base.withColumn(
             "transaction_sk",
-            F.row_number().over(tx_sk_window).cast("bigint"),
+            _stable_bigint_sk("transaction_id"),
         ).select(
             "transaction_sk",
             "transaction_id",

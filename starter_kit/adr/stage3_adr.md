@@ -1,86 +1,48 @@
 # Architecture Decision Record: Stage 3 Streaming Extension
 
-**File:** `adr/stage3_adr.md`
-**Author:** [your name]
-**Date:** [date of submission]
+**File:** `adr/stage3_adr.md`  
+**Author:** tendanimukhithi  
+**Date:** 2026-04-19  
 **Status:** Final
-
----
-
-## Instructions (remove this section before submitting)
-
-This ADR is required at Stage 3. It must be present in your repository at `adr/stage3_adr.md` when you push the `stage3-submission` tag.
-
-The ADR is human-reviewed at the finalist stage and is worth **2 points** out of 100. Scoring:
-- All three questions addressed substantively: **2 points**
-- One or two questions answered superficially: **1 point**
-- ADR absent or none of the questions addressed: **0 points**
-
-**What "substantive" means:** Each question requires a minimum of approximately 100 words of specific, concrete reasoning about your own pipeline. General statements ("I would have made it more modular") do not qualify as substantive. Specific statements do ("I would have separated the schema definition from the transformation logic and placed it in `config/schemas.py`, because when Stage 3 required a new output table I had to modify `transform.py` in three places that all referenced the Gold schema directly").
-
-**What reviewers are looking for:** Evidence that you understand the architectural trade-offs you made, not evidence that you know what good architecture looks like in the abstract. Reference your own code. Name specific files, classes, or design decisions.
-
-Delete these instructions before submitting.
 
 ---
 
 ## Context
 
-[1–2 paragraphs describing the Stage 3 requirement and the constraints you were working within.]
+Stage 3 introduced a near-real-time requirement on top of the existing batch pipeline: process pre-staged micro-batch JSONL files from `/data/stream/`, in filename order, and produce two additional Delta outputs under `/data/output/stream_gold/`:
+1. `current_balances` (one row per account, upsert semantics), and  
+2. `recent_transactions` (last 50 transactions per account).
 
-[Describe: what did the mobile product team need? What did the streaming interface look like — directory of micro-batch JSONL files, delivered to `/data/stream/`, requiring polling? What output tables were required (`current_balances`, `recent_transactions`) and what SLA applied (5-minute lag from file arrival to Gold update)?]
+The SLA requirement is that `updated_at` should be within 5 minutes of event time for full credit. The pipeline still had to keep Stage 2 batch behavior intact: Bronze/Silver/Gold outputs, DQ logic driven by `config/dq_rules.yaml`, and `dq_report.json` generation.
 
-[Also describe: what was the state of your pipeline coming into Stage 3? Approximately how many lines of code, what structure, what had you changed between Stage 1 and Stage 2?]
-
----
-
-## Decision 1: How did your existing Stage 1 architecture facilitate or hinder the streaming extension?
-
-**Minimum: approximately 100 words of specific reasoning about your own pipeline.**
-
-[Address at least the following:]
-
-[**What made Stage 3 easier:**]
-[— Which specific design choices in Stage 1 or Stage 2 reduced the work required to add the streaming path. Examples: did you already have a modular ingestion layer that made it easy to add a new input source? Did your Delta MERGE pattern from Stage 2 transfer directly to the streaming upsert logic? Was your config-driven path setup easy to extend with a `/data/stream/` source?]
-
-[**What made Stage 3 harder:**]
-[— Which specific choices created friction. Examples: did you use a monolithic `run_all.py` that combined batch and stream concerns in a way that was difficult to separate? Did you have hardcoded schema assumptions that broke when the new `current_balances` table was introduced? Did your Spark session configuration conflict with the polling loop's concurrency requirements?]
-
-[**Code survival rate:**]
-[— Roughly what fraction of your Stage 1/2 code survived intact into Stage 3? What had to be modified versus extended versus rewritten?]
+Coming into Stage 3, Stage 1 and Stage 2 were implemented in modular files: `pipeline/ingest.py`, `pipeline/transform.py`, `pipeline/provision.py`, with orchestration in `pipeline/run_all.py`. Stage 2 already established key patterns used in Stage 3: config path resolution, Spark session bootstrap, Delta writes, and deterministic transformations.
 
 ---
 
-## Decision 2: What design decisions in Stage 1 would you change in hindsight?
+## Decision 1: How did the existing Stage 1 architecture facilitate or hinder the streaming extension?
 
-**Minimum: approximately 100 words of specific, concrete changes.**
+The architecture helped in three important ways. First, the stage separation (`ingest.py`, `transform.py`, `provision.py`) meant Stage 3 could be added as a new module (`pipeline/stream_ingest.py`) instead of rewriting existing batch logic. Second, the config-driven approach and path resolution functions from Stage 1/2 made it straightforward to add stream inputs and stream output paths without hardcoding environment-specific locations. Third, using Delta as the common storage layer in earlier stages made stream table maintenance natural, because Stage 3 also needed Delta outputs and stateful table updates.
 
-[Be specific. "I would have..." followed by a concrete architectural choice and an explanation of why it would have improved Stage 3. General statements are not sufficient.]
+The architecture also created friction. Spark session construction was duplicated in multiple modules, so Stage 3 required repeating runtime hardening logic (driver host binding, local hostname behavior, compression settings, local jar handling) instead of reusing a shared runtime utility. `run_all.py` is a linear entrypoint, so adding stream behavior there is simple but less flexible than a mode-based launcher. Another friction point was that batch and stream schemas were still defined inline in modules, which made stream-table introduction more manual than it needed to be.
 
-[Examples of the level of specificity required:]
-[— "I would have defined my Gold table schemas in a single `config/schemas.py` file rather than inline in `provision.py`. When I needed to add the `current_balances` table in Stage 3, I had to trace schema definitions across three modules."]
-[— "I would have designed `run_all.py` to accept a `--mode` argument (`batch` or `stream`) from the start, rather than adding a branching conditional in Stage 3 that made the entry point harder to reason about."]
-[— "I would not have used `.toPandas()` in my Silver-to-Gold join. It worked at Stage 1 scale but I had to refactor it at Stage 2, and the refactor left technical debt that complicated the Stage 3 streaming path."]
-
-[Describe at least one concrete structural change.]
+Estimated code survival: roughly 85–90% of Stage 1/2 code survived untouched. Stage 3 was mostly additive: new `stream_ingest.py` plus a small call-site change in `run_all.py`.
 
 ---
 
-## Decision 3: How would you approach this differently if you had known Stage 3 was coming from the start?
+## Decision 2: What design decisions in Stage 1 would I change in hindsight?
 
-**Minimum: approximately 100 words of forward-looking architectural reasoning.**
+In hindsight, I would introduce a shared runtime/core layer in Stage 1 with a single Spark bootstrap utility and shared schema/config helpers. Right now, `_build_spark_session` and path resolution patterns are repeated across `ingest.py`, `transform.py`, `provision.py`, and now `stream_ingest.py`. This repetition increased Stage 3 implementation risk because every runtime fix had to be applied in several places.
 
-[This is the forward-looking design question. Describe the architecture you would have chosen from Day 1 if the full three-stage specification had been visible to you at the start.]
+I would also separate table schema definitions into a dedicated module, for example `pipeline/schemas.py`, with explicit builders for batch and stream output schemas. In Stage 3, stream table schema creation was coded directly in `stream_ingest.py`. That works, but it reduces consistency and makes future schema evolution harder to reason about.
 
-[Consider addressing:]
-[— **Ingestion patterns:** Would you have designed the ingest layer to accept both batch file paths and streaming directory sources from the beginning? What interface would that look like?]
-[— **State management:** The `current_balances` table requires maintaining running state across stream batches. Would you have chosen a different state management approach if you had known this from Day 1? Delta MERGE, checkpoint files, an embedded key-value store?]
-[— **Output format choices:** Would you have structured your Gold layer differently — for example, using a single `gold/` output module that handles both batch and streaming tables — rather than retrofitting `stream_gold/` as a separate output path?]
-[— **Pipeline entry points:** Would you have used a single entry point with mode selection, or kept batch and streaming as separate executables that share common library code?]
-[— **Anything else** specific to your implementation that would have changed with full visibility.]
+Finally, I would redesign `run_all.py` early to support explicit execution modes (`batch`, `stream`, `all`) and lifecycle behavior. The current linear orchestration is valid for this challenge, but mode-aware orchestration would have made Stage 3 integration cleaner and easier to test in isolation.
 
 ---
 
-## Appendix (optional)
+## Decision 3: How would I approach this differently with full Stage 1–3 visibility?
 
-[Architecture diagram, code snippets, or other supporting material. Not required. Does not substitute for the written responses above. If you include a diagram, describe what it shows in plain text as well — reviewers may not have access to rendering tools.]
+With full visibility from Day 1, I would design a small shared pipeline framework with two adapters: batch source adapter and stream source adapter, both producing normalized event frames into common transformation primitives. I would keep one shared Spark bootstrap utility and one shared config object, including batch paths, stream paths, polling parameters, and runtime safety defaults.
+
+For state management, I would define explicit stream state contracts up front: `current_balances` as account-level state and `recent_transactions` as bounded event history (top-N by account). I would still use Delta tables as the state backend because they fit challenge constraints (no external infrastructure, no queue, local container execution) and support deterministic local testing.
+
+For entrypoints, I would expose `pipeline/run_all.py` as orchestrator plus mode options, so CI and local test flows can run `batch` or `stream` independently when needed. I would also centralize validation helpers (row count checks, schema checks, table readability checks) to avoid drift between development and harness expectations. Overall, the big change would be shifting from stage-specific scripts to reusable dataflow components with stage-specific wiring.

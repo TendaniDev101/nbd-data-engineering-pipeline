@@ -149,14 +149,17 @@ def _list_stream_files(stream_input_path: str):
     return sorted(candidates)
 
 
-def _process_stream_file(
+def _process_stream_files(
     spark: SparkSession,
-    file_path: str,
+    file_paths: list[str],
     current_balances_path: str,
     recent_transactions_path: str,
     gold_accounts_path: str,
 ) -> None:
-    stream_df = spark.read.json(file_path)
+    if not file_paths:
+        return
+
+    stream_df = spark.read.json(file_paths)
     if stream_df.rdd.isEmpty():
         return
 
@@ -323,15 +326,14 @@ def run_stream_ingestion():
             new_files = [file_name for file_name in stream_files if file_name not in processed]
 
             if new_files:
-                for file_name in new_files:
-                    _process_stream_file(
-                        spark=spark,
-                        file_path=os.path.join(stream_input_path, file_name),
-                        current_balances_path=current_balances_path,
-                        recent_transactions_path=recent_transactions_path,
-                        gold_accounts_path=gold_accounts_path,
-                    )
-                    processed.add(file_name)
+                _process_stream_files(
+                    spark=spark,
+                    file_paths=[os.path.join(stream_input_path, file_name) for file_name in new_files],
+                    current_balances_path=current_balances_path,
+                    recent_transactions_path=recent_transactions_path,
+                    gold_accounts_path=gold_accounts_path,
+                )
+                processed.update(new_files)
                 last_new_file_time = time.time()
                 continue
 
